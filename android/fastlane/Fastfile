@@ -13,11 +13,40 @@
 # Uncomment the line if you want fastlane to automatically update itself
 # update_fastlane
 
-default_platform(:ios)
+default_platform(:android)
 
-platform :ios do
-  desc "Description of what the lane does"
-  lane :custom_lane do
-    # add actions here: https://docs.fastlane.tools/actions
+platform :android do
+  desc "Deploy a new version to the Google Play Beta track"
+  lane :beta do
+    # Grab the latest build number from the Play Store
+    previous_build_number = google_play_track_version_codes(
+      track: "internal",
+      json_key: "#{Dir.pwd}/play-store-credentials.json"
+    )[0]
+
+    # Increment the build number
+    increment_version_code(
+      gradle_file_path: "app/build.gradle",
+      version_code: previous_build_number + 1
+    )
+
+    # Build a release version of the app
+    gradle(
+      task: "clean assembleRelease",
+      print_command: false,
+      properties: {
+        "android.injected.signing.store.file" => "#{Dir.pwd}/example-app.keystore",
+        "android.injected.signing.store.password" => ENV["ANDROID_SIGNING_KEY_PASSWORD"],
+        "android.injected.signing.key.alias" => "example-app",
+        "android.injected.signing.key.password" => ENV["ANDROID_SIGNING_KEY_PASSWORD"],
+      },
+      flags: "--stacktrace"
+    )
+
+    # Upload the app to the Play Store
+    upload_to_play_store(
+      track: "internal",
+      json_key: "#{Dir.pwd}/play-store-credentials.json"
+    )
   end
 end
