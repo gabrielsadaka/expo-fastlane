@@ -1,0 +1,163 @@
+version: 2.1
+jobs:
+  react-native-test:
+    docker:
+      - image: cimg/node:18.8
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          key: yarn-v1-{{ checksum "yarn.lock" }}-{{ arch }}
+
+      - restore_cache:
+          key: node-v1-{{ checksum "package.json" }}-{{ arch }}
+
+      - run: yarn install
+
+      - run: yarn test
+
+      - run: yarn tsc
+
+      - save_cache:
+          key: yarn-v1-{{ checksum "yarn.lock" }}-{{ arch }}
+          paths:
+            - ~/.cache/yarn
+
+      - save_cache:
+          key: node-v1-{{ checksum "package.json" }}-{{ arch }}
+          paths:
+            - node_modules
+
+      - store_test_results:
+          path: test-results
+
+      - store_artifacts:
+          path: test-results
+
+  macos-build-and-deploy:
+    macos:
+      xcode: 13.4.1
+    environment:
+      FL_OUTPUT_DIR: output
+
+    steps:
+      - checkout
+      - restore_cache:
+          key: yarn-v1-{{ checksum "yarn.lock" }}-{{ arch }}
+
+      - restore_cache:
+          key: node-v1-{{ checksum "package.json" }}-{{ arch }}
+
+      - run: yarn install
+
+      - save_cache:
+          key: yarn-v1-{{ checksum "yarn.lock" }}-{{ arch }}
+          paths:
+            - ~/.cache/yarn
+
+      - save_cache:
+          key: node-v1-{{ checksum "package.json" }}-{{ arch }}
+          paths:
+            - node_modules
+
+      - restore_cache:
+          key: bundle-v1-{{ checksum "ios/Gemfile.lock" }}-{{ arch }}
+
+      - restore_cache:
+          key: pods-v1-{{ checksum "ios/Podfile.lock" }}-{{ arch }}
+
+      - run:
+          command: pod install
+          working_directory: ios
+
+      - run:
+          command: bundle install
+          working_directory: ios
+
+      - save_cache:
+          key: bundle-v1-{{ checksum "ios/Gemfile.lock" }}-{{ arch }}
+          paths:
+            - vendor/bundle
+
+      - save_cache:
+          key: pods-v1-{{ checksum "ios/Podfile.lock" }}-{{ arch }}
+          paths:
+            - ios/Pods
+
+      - run:
+          name: Fastlane deploy TestFlight
+          command: ./fastlane/deploy.sh
+          working_directory: ios
+
+      - store_artifacts:
+          path: output
+
+  # replace example-app with repository name
+  android-build-and-deploy:
+    working_directory: ~/example-app
+    docker:
+      - image: cimg/android:2022.08-node
+    steps:
+      - checkout:
+          path: ~/example-app
+
+      - attach_workspace:
+          at: ~/example-app
+
+      - restore_cache:
+          key: yarn-v1-{{ checksum "yarn.lock" }}-{{ arch }}
+
+      - restore_cache:
+          key: node-v1-{{ checksum "package.json" }}-{{ arch }}
+
+      - run: yarn install
+
+      - save_cache:
+          key: yarn-v1-{{ checksum "yarn.lock" }}-{{ arch }}
+          paths:
+            - ~/.cache/yarn
+
+      - save_cache:
+          key: node-v1-{{ checksum "package.json" }}-{{ arch }}
+          paths:
+            - node_modules
+
+      - restore_cache:
+          key: bundle-v1-{{ checksum "android/Gemfile.lock" }}-{{ arch }}
+
+      - run:
+          command: bundle install
+          working_directory: android
+
+      - save_cache:
+          key: bundle-v1-{{ checksum "android/Gemfile.lock" }}-{{ arch }}
+          paths:
+            - vendor/bundle
+
+      - run:
+          name: Fastlane deploy beta
+          working_directory: android
+          command: ./fastlane/deploy.sh
+
+      - store_artifacts:
+          path: app/build/outputs
+
+workflows:
+  react-native-android-ios:
+    jobs:
+      - react-native-test
+      - approve_deploy_to_apple_app_store:
+          type: approval
+          requires:
+            - react-native-test
+      - approve_deploy_to_google_play_store:
+          type: approval
+          requires:
+            - react-native-test
+      - android-build-and-deploy:
+          requires:
+            - approve_deploy_to_google_play_store
+      - macos-build-and-deploy:
+          requires:
+            - approve_deploy_to_apple_app_store
