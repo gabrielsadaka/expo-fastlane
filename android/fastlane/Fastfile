@@ -37,7 +37,8 @@ platform :android do
       properties: {
         "android.injected.signing.store.file" => "#{Dir.pwd}/example-app.keystore",
         "android.injected.signing.store.password" => ENV["ANDROID_SIGNING_KEY_PASSWORD"],
-        "android.injected.signing.key.alias" => "example-app",
+        # replace alias with your signing key alias
+        "android.injected.signing.key.alias" => "[example-app]",
         "android.injected.signing.key.password" => ENV["ANDROID_SIGNING_KEY_PASSWORD"],
       },
       flags: "--stacktrace"
